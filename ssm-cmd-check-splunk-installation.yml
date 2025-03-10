@@ -1,0 +1,198 @@
+---
+schemaVersion: '2.2'
+description: 'Check if Splunk is already installed and running on Linux instances'
+parameters:
+  checkProcesses:
+    type: Boolean
+    default: true
+    description: '(Optional) Check if Splunk processes are running'
+  checkService:
+    type: Boolean
+    default: true
+    description: '(Optional) Check if Splunk service is configured'
+  checkDirectories:
+    type: Boolean
+    default: true
+    description: '(Optional) Check if Splunk installation directories exist'
+  checkPorts:
+    type: Boolean
+    default: true
+    description: '(Optional) Check if Splunk ports are in use'
+  checkVersion:
+    type: Boolean
+    default: true
+    description: '(Optional) Check Splunk version if installed'
+  customInstallPath:
+    type: String
+    default: ''
+    description: '(Optional) Custom Splunk installation path to check'
+mainSteps:
+  - action: 'aws:runShellScript'
+    name: 'CheckSplunkInstallation'
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          # Script to check if Splunk is already installed and running
+          
+          echo "=== Checking for existing Splunk installation ==="
+          RESULTS_JSON="{"
+          
+          # Check for Splunk processes
+          if [ "{{ checkProcesses }}" = true ]; then
+            echo -n "Checking for Splunk processes: "
+            if ps aux | grep -i splunk | grep -v grep > /dev/null; then
+              echo "FOUND - Splunk processes are running"
+              SPLUNK_RUNNING=true
+              RESULTS_JSON="${RESULTS_JSON}\"processes_running\":true,"
+            else
+              echo "NOT FOUND - No Splunk processes detected"
+              SPLUNK_RUNNING=false
+              RESULTS_JSON="${RESULTS_JSON}\"processes_running\":false,"
+            fi
+          fi
+          
+          # Check for Splunk service
+          if [ "{{ checkService }}" = true ]; then
+            echo -n "Checking for Splunk service: "
+            if systemctl status splunk &>/dev/null || service splunk status &>/dev/null; then
+              echo "FOUND - Splunk service exists"
+              SPLUNK_SERVICE=true
+              RESULTS_JSON="${RESULTS_JSON}\"service_configured\":true,"
+            else
+              echo "NOT FOUND - No Splunk service detected"
+              SPLUNK_SERVICE=false
+              RESULTS_JSON="${RESULTS_JSON}\"service_configured\":false,"
+            fi
+          fi
+          
+          # Check for Splunk installation directories
+          if [ "{{ checkDirectories }}" = true ]; then
+            echo -n "Checking for Splunk installation directories: "
+            SPLUNK_INSTALLED=false
+            SPLUNK_DIR=""
+            
+            # Check standard locations
+            if [ -d "/opt/splunk" ]; then
+              SPLUNK_DIR="/opt/splunk"
+              SPLUNK_INSTALLED=true
+              echo "FOUND - Splunk directory exists at /opt/splunk"
+            elif [ -d "/opt/splunkforwarder" ]; then
+              SPLUNK_DIR="/opt/splunkforwarder"
+              SPLUNK_INSTALLED=true
+              echo "FOUND - Splunk Forwarder directory exists at /opt/splunkforwarder"
+            fi
+            
+            # Check custom location if provided
+            if [ -n "{{ customInstallPath }}" ] && [ -d "{{ customInstallPath }}" ]; then
+              SPLUNK_DIR="{{ customInstallPath }}"
+              SPLUNK_INSTALLED=true
+              echo "FOUND - Splunk directory exists at {{ customInstallPath }}"
+            fi
+            
+            if [ "$SPLUNK_INSTALLED" = false ]; then
+              echo "NOT FOUND - No Splunk directories detected"
+            fi
+            
+            RESULTS_JSON="${RESULTS_JSON}\"installation_found\":$SPLUNK_INSTALLED,"
+            if [ -n "$SPLUNK_DIR" ]; then
+              RESULTS_JSON="${RESULTS_JSON}\"installation_path\":\"$SPLUNK_DIR\","
+            fi
+          fi
+          
+          # Check for Splunk ports
+          if [ "{{ checkPorts }}" = true ]; then
+            echo -n "Checking for Splunk ports (8000, 8089, 9997): "
+            PORT_8000_IN_USE=false
+            PORT_8089_IN_USE=false
+            PORT_9997_IN_USE=false
+            
+            if command -v netstat &>/dev/null; then
+              if netstat -tuln 2>/dev/null | grep -E ':8000\s' > /dev/null; then
+                PORT_8000_IN_USE=true
+              fi
+              if netstat -tuln 2>/dev/null | grep -E ':8089\s' > /dev/null; then
+                PORT_8089_IN_USE=true
+              fi
+              if netstat -tuln 2>/dev/null | grep -E ':9997\s' > /dev/null; then
+                PORT_9997_IN_USE=true
+              fi
+            elif command -v ss &>/dev/null; then
+              if ss -tuln 2>/dev/null | grep -E ':8000\s' > /dev/null; then
+                PORT_8000_IN_USE=true
+              fi
+              if ss -tuln 2>/dev/null | grep -E ':8089\s' > /dev/null; then
+                PORT_8089_IN_USE=true
+              fi
+              if ss -tuln 2>/dev/null | grep -E ':9997\s' > /dev/null; then
+                PORT_9997_IN_USE=true
+              fi
+            fi
+            
+            PORTS_IN_USE=false
+            if [ "$PORT_8000_IN_USE" = true ] || [ "$PORT_8089_IN_USE" = true ] || [ "$PORT_9997_IN_USE" = true ]; then
+              PORTS_IN_USE=true
+              echo "FOUND - One or more Splunk ports are in use"
+            else
+              echo "NOT FOUND - No Splunk ports detected in use"
+            fi
+            
+            RESULTS_JSON="${RESULTS_JSON}\"ports_in_use\":$PORTS_IN_USE,"
+            RESULTS_JSON="${RESULTS_JSON}\"port_details\":{"
+            RESULTS_JSON="${RESULTS_JSON}\"port_8000\":$PORT_8000_IN_USE,"
+            RESULTS_JSON="${RESULTS_JSON}\"port_8089\":$PORT_8089_IN_USE,"
+            RESULTS_JSON="${RESULTS_JSON}\"port_9997\":$PORT_9997_IN_USE"
+            RESULTS_JSON="${RESULTS_JSON}},"
+          fi
+          
+          # Get Splunk version if installed
+          VERSION=""
+          if [ "{{ checkVersion }}" = true ] && [ -n "$SPLUNK_DIR" ] && [ -f "$SPLUNK_DIR/bin/splunk" ]; then
+            echo -n "Checking Splunk version: "
+            VERSION=$($SPLUNK_DIR/bin/splunk version | grep "^Splunk" | awk '{print $2}')
+            echo "$VERSION"
+            if [ -n "$VERSION" ]; then
+              RESULTS_JSON="${RESULTS_JSON}\"version\":\"$VERSION\","
+            fi
+          fi
+          
+          # Summary
+          echo -e "\n=== Splunk Installation Summary ==="
+          if [ -n "$SPLUNK_RUNNING" ]; then echo "Splunk processes running: $SPLUNK_RUNNING"; fi
+          if [ -n "$SPLUNK_SERVICE" ]; then echo "Splunk service configured: $SPLUNK_SERVICE"; fi
+          if [ -n "$SPLUNK_INSTALLED" ]; then echo "Splunk installation found: $SPLUNK_INSTALLED"; fi
+          if [ -n "$PORTS_IN_USE" ]; then echo "Splunk ports in use: $PORTS_IN_USE"; fi
+          if [ -n "$VERSION" ]; then echo "Splunk version: $VERSION"; fi
+          if [ -n "$SPLUNK_DIR" ]; then echo "Splunk directory: $SPLUNK_DIR"; fi
+          
+          # Decision
+          INSTALLATION_DETECTED=false
+          if [ "$SPLUNK_RUNNING" = true ] || [ "$SPLUNK_INSTALLED" = true ]; then
+            INSTALLATION_DETECTED=true
+            echo -e "\nRESULT: Splunk appears to be already installed on this system."
+            if [ -n "$SPLUNK_DIR" ]; then
+              echo "Consider stopping the service before reinstalling:"
+              echo "  sudo $SPLUNK_DIR/bin/splunk stop"
+            fi
+          else
+            echo -e "\nRESULT: No existing Splunk installation detected. Safe to proceed with installation."
+          fi
+          
+          # Finalize JSON output
+          RESULTS_JSON="${RESULTS_JSON}\"installation_detected\":$INSTALLATION_DETECTED}"
+          
+          # Write results to SSM output
+          echo "$RESULTS_JSON" > /tmp/splunk_check_results.json
+          cat /tmp/splunk_check_results.json
+          
+          # Return exit code based on installation status
+          if [ "$INSTALLATION_DETECTED" = true ]; then
+            exit 100  # Custom exit code indicating Splunk is installed
+          else
+            exit 0    # Success exit code indicating Splunk is not installed
+          fi
+      timeoutSeconds: 30
+    outputs:
+      - Name: SplunkCheckResults
+        Selector: $.Payload
+        Type: String
