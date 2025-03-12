@@ -3,24 +3,39 @@ schemaVersion: '2.2'
 description: 'Check if Splunk is already installed and running on Linux instances'
 parameters:
   checkProcesses:
-    type: Boolean
-    default: true
+    type: String
+    default: 'true'
+    allowedValues:
+      - 'true'
+      - 'false'
     description: '(Optional) Check if Splunk processes are running'
   checkService:
-    type: Boolean
-    default: true
+    type: String
+    default: 'true'
+    allowedValues:
+      - 'true'
+      - 'false'
     description: '(Optional) Check if Splunk service is configured'
   checkDirectories:
-    type: Boolean
-    default: true
+    type: String
+    default: 'true'
+    allowedValues:
+      - 'true'
+      - 'false'
     description: '(Optional) Check if Splunk installation directories exist'
   checkPorts:
-    type: Boolean
-    default: true
+    type: String
+    default: 'true'
+    allowedValues:
+      - 'true'
+      - 'false'
     description: '(Optional) Check if Splunk ports are in use'
   checkVersion:
-    type: Boolean
-    default: true
+    type: String
+    default: 'true'
+    allowedValues:
+      - 'true'
+      - 'false'
     description: '(Optional) Check Splunk version if installed'
   customInstallPath:
     type: String
@@ -39,7 +54,7 @@ mainSteps:
           RESULTS_JSON="{"
           
           # Check for Splunk processes
-          if [ "{{ checkProcesses }}" = true ]; then
+          if [ "{{ checkProcesses }}" = "true" ]; then
             echo -n "Checking for Splunk processes: "
             if ps aux | grep -i splunk | grep -v grep > /dev/null; then
               echo "FOUND - Splunk processes are running"
@@ -53,7 +68,7 @@ mainSteps:
           fi
           
           # Check for Splunk service
-          if [ "{{ checkService }}" = true ]; then
+          if [ "{{ checkService }}" = "true" ]; then
             echo -n "Checking for Splunk service: "
             if systemctl status splunk &>/dev/null || service splunk status &>/dev/null; then
               echo "FOUND - Splunk service exists"
@@ -67,7 +82,7 @@ mainSteps:
           fi
           
           # Check for Splunk installation directories
-          if [ "{{ checkDirectories }}" = true ]; then
+          if [ "{{ checkDirectories }}" = "true" ]; then
             echo -n "Checking for Splunk installation directories: "
             SPLUNK_INSTALLED=false
             SPLUNK_DIR=""
@@ -101,7 +116,7 @@ mainSteps:
           fi
           
           # Check for Splunk ports
-          if [ "{{ checkPorts }}" = true ]; then
+          if [ "{{ checkPorts }}" = "true" ]; then
             echo -n "Checking for Splunk ports (8000, 8089, 9997): "
             PORT_8000_IN_USE=false
             PORT_8089_IN_USE=false
@@ -147,7 +162,7 @@ mainSteps:
           
           # Get Splunk version if installed
           VERSION=""
-          if [ "{{ checkVersion }}" = true ] && [ -n "$SPLUNK_DIR" ] && [ -f "$SPLUNK_DIR/bin/splunk" ]; then
+          if [ "{{ checkVersion }}" = "true" ] && [ -n "$SPLUNK_DIR" ] && [ -f "$SPLUNK_DIR/bin/splunk" ]; then
             echo -n "Checking Splunk version: "
             VERSION=$($SPLUNK_DIR/bin/splunk version | grep "^Splunk" | awk '{print $2}')
             echo "$VERSION"

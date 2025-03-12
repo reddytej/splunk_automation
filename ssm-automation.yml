@@ -1,0 +1,13 @@
+schemaVersion: "0.3"
+description: "document"
+parameters:
+  AutomationAssumeRole:
+    type: String
+    description: "role arn"
+assumeRole: '{{ AutomationAssumeRole}}'
+mainSteps:
+  - name: "verify"
+    action: "aws:runCommand"
+    inputs:
+      DocumentName: "splkes-SplunkVerifyInstall"
+      
